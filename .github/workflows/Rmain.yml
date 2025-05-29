@@ -1,4 +1,4 @@
-name: Build APK
+name: Build RevampedFMRadio APK
 
 on:
   workflow_dispatch:
@@ -8,12 +8,13 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
-    - name: Checkout code
+    - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0  # Get full history including Git submodules
+        fetch-depth: 0  # Get full history
 
     - name: Set up JDK 17
       uses: actions/setup-java@v3
@@ -21,19 +22,36 @@ jobs:
         java-version: '17'
         distribution: 'zulu'
 
-    # Generate Gradle Wrapper if missing
-    - name: Create Gradle Wrapper
-      if: !exists('gradlew')
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+
+    - name: Generate Gradle Wrapper
+      id: generate-wrapper
       run: |
-        gradle wrapper --gradle-version 8.4
+        # Check if wrapper exists
+        if [ ! -f "gradlew" ]; then
+          echo "Generating Gradle Wrapper..."
+          gradle wrapper --gradle-version 8.4
+        else
+          echo "Gradle Wrapper already exists"
+        fi
+
+        # Make executable
         chmod +x gradlew
-        
-    # Only run if gradlew exists
-    - name: Build APK
-      if: exists('gradlew')
+        ./gradlew --version
+
+    - name: Accept Android Licenses
       run: |
-        ./gradlew clean assembleDebug --no-daemon --stacktrace
-        
+        yes | $ANDROID_HOME/tools/bin/sdkmanager --licenses || true
+        ./gradlew --stop
+
+    - name: Build APK with Gradle
+      run: |
+        ./gradlew clean assembleDebug \
+          --no-daemon \
+          --stacktrace \
+          --info
+
     - name: Find and Upload APK
       uses: actions/upload-artifact@v4
       with:
@@ -41,3 +59,5 @@ jobs:
         path: |
           app/build/outputs/apk/debug/*.apk
           **/build/outputs/apk/debug/*.apk
+          build/outputs/apk/debug/*.apk
+        if-no-files-found: error
